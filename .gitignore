@@ -1,0 +1,13 @@
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# macOS / Linux junk
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log/target
