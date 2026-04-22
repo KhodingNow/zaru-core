@@ -8,8 +8,12 @@ use crate::settlement::traits::SettlementLayer;
 use crate::settlement::types::{FailureReason, SettlementStatus};
 use crate::transaction::{Transaction, TxId, Verified};
 
+use crate::wallet::WalletId; 
+
 pub struct InMemorySettlement {
     store: Mutex<HashMap<TxId, SettlementStatus>>,
+	nonces: Mutex<HashMap<WalletId, u64>>,
+
 }
 
 // ---- Constructor ----
@@ -18,6 +22,7 @@ impl InMemorySettlement {
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
+		nonces: Mutex::new(HashMap::new()),
         }
     }
 }
@@ -28,24 +33,53 @@ impl InMemorySettlement {
 impl SettlementLayer for InMemorySettlement {
     type Error = std::io::Error;
 
-    async fn submit(
-        &self,
-        tx: Transaction<Verified>,
-    ) -> Result<TxId, Self::Error> {
-        let mut store = self.store.lock().unwrap();
+async fn submit(
+    &self,
+    tx: Transaction<Verified>,
+) -> Result<TxId, Self::Error> {
 
-        // Idempotency: return existing if already submitted
-        if store.contains_key(&tx.id) {
-            return Ok(tx.id.clone());
-        }
+    let mut store = self.store.lock().unwrap();
+    let mut nonces = self.nonces.lock().unwrap();
 
-        // Insert as Pending
-        store.insert(tx.id.clone(), SettlementStatus::Pending);
-
-        Ok(tx.id)
+    // -------------------------
+    // 1. IDEMPOTENCY FIRST (CRITICAL)
+    // -------------------------
+    if let Some(_status) = store.get(&tx.id) {
+        // Already processed → safe retry
+        return Ok(tx.id);
     }
 
-    async fn status(
+    // -------------------------
+    // 2. NONCE VALIDATION (ONLY FOR NEW TX)
+    // -------------------------
+    let sender = tx.from.clone();
+    let incoming_nonce = tx.nonce;
+
+    if let Some(last_nonce) = nonces.get(&sender) {
+        if incoming_nonce <= *last_nonce {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "nonce replay detected",
+            ));
+        }
+    }
+
+    // -------------------------
+    // 3. STORE TRANSACTION
+    // -------------------------
+    store.insert(tx.id.clone(), SettlementStatus::Pending);
+
+    // -------------------------
+    // 4. UPDATE NONCE
+    // -------------------------
+    nonces.insert(sender, incoming_nonce);
+
+    Ok(tx.id)
+}
+
+ 
+
+async fn status(
         &self,
         tx_id: &TxId,
     ) -> Result<SettlementStatus, Self::Error> {
