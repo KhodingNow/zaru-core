@@ -13,7 +13,7 @@ use crate::wallet::WalletId;
 pub struct InMemorySettlement {
     store: Mutex<HashMap<TxId, SettlementStatus>>,
 	nonces: Mutex<HashMap<WalletId, u64>>,
-
+	balances: Mutex<HashMap<WalletId, Amount>>
 }
 
 // ---- Constructor ----
@@ -23,8 +23,17 @@ impl InMemorySettlement {
         Self {
             store: Mutex::new(HashMap::new()),
 		nonces: Mutex::new(HashMap::new()),
+		balances: Mutex::new(HashMap::new()),
         }
     }
+}
+
+impl InMemorySettlement {
+	pub fn deposit(&self, wallet: WalletId, amount: Amount) {
+		let mut balances = self.balances.lock().unwrap();
+		balances.insert(wallet, amount);
+		
+	}
 }
 
 // ---- Trait Implementation ----
@@ -61,8 +70,42 @@ async fn submit(
                 std::io::ErrorKind::Other,
                 "nonce replay detected",
             ));
-        }
-    }
+     }
+}
+
+	let mut balances = self.balances.lock().unwrap();
+
+	let sender_balance = balances
+		.get(&tx.from)
+		.cloned()
+		.unwrap_or_else(|| Amount::new(0).unwrap());
+
+	if sender_balance.value() < tx.amount.value() {
+		return Err(std::io::Error::new(
+			std::io::ErrorKind::Other,
+			"insufficient funds",
+	));
+}
+
+// Deduct sender
+balances.insert(
+	tx.from.clone(),
+	Amount::new(sender_balance.value() - tx.amount.value()).unwrap(),
+
+);
+
+// Credit receiver
+let receiver_balance = balances
+	.get(&tx.to)
+	.cloned()
+	.unwrap_or_else(|| Amount::new(0).unwrap());
+
+balances.insert(
+	tx.to.clone(),
+	Amount::new(receiver_balance.value() + tx.amount.value()).unwrap(),
+);
+
+
 
     // -------------------------
     // 3. STORE TRANSACTION

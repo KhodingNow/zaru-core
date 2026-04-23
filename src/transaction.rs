@@ -31,6 +31,7 @@ pub struct Transaction<State> {
     _state: PhantomData<State>,
 }
 
+
 // ---- UNSIGNED ----
 
 impl Transaction<Unsigned> {
@@ -41,6 +42,8 @@ impl Transaction<Unsigned> {
         amount: Amount,
         nonce: u64,
     ) -> Self {
+		assert!(amount.value() > 0, "transaction amount must be positive");	
+
         Self {
             id,
             from,
