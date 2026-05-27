@@ -7,13 +7,12 @@ use crate::amount::Amount;
 use crate::settlement::traits::SettlementLayer;
 use crate::settlement::types::{FailureReason, SettlementStatus};
 use crate::transaction::{Transaction, TxId, Verified};
-
-use crate::wallet::WalletId; 
+use crate::wallet::WalletId;
 
 pub struct InMemorySettlement {
     store: Mutex<HashMap<TxId, SettlementStatus>>,
-	nonces: Mutex<HashMap<WalletId, u64>>,
-	balances: Mutex<HashMap<WalletId, Amount>>
+    nonces: Mutex<HashMap<WalletId, u64>>,
+    balances: Mutex<HashMap<WalletId, Amount>>,
 }
 
 // ---- Constructor ----
@@ -22,18 +21,32 @@ impl InMemorySettlement {
     pub fn new() -> Self {
         Self {
             store: Mutex::new(HashMap::new()),
-		nonces: Mutex::new(HashMap::new()),
-		balances: Mutex::new(HashMap::new()),
+            nonces: Mutex::new(HashMap::new()),
+            balances: Mutex::new(HashMap::new()),
         }
     }
-}
 
-impl InMemorySettlement {
-	pub fn deposit(&self, wallet: WalletId, amount: Amount) {
-		let mut balances = self.balances.lock().unwrap();
-		balances.insert(wallet, amount);
-		
-	}
+    // ---- Ledger Helpers ----
+
+    pub fn deposit(&self, wallet: WalletId, amount: Amount) {
+        let mut balances = self.balances.lock().unwrap();
+
+        let entry = balances
+            .entry(wallet)
+            .or_insert(Amount::new(0).unwrap());
+
+        *entry = Amount::new(entry.value() + amount.value()).unwrap();
+    }
+
+    pub fn balance(&self, wallet: &WalletId) -> Option<Amount> {
+        let balances = self.balances.lock().unwrap();
+        balances.get(wallet).cloned()
+    }
+
+    pub fn transaction(&self, tx_id: &TxId) -> Option<SettlementStatus> {
+        let store = self.store.lock().unwrap();
+        store.get(tx_id).cloned()
+    }
 }
 
 // ---- Trait Implementation ----
@@ -42,87 +55,90 @@ impl InMemorySettlement {
 impl SettlementLayer for InMemorySettlement {
     type Error = std::io::Error;
 
-async fn submit(
-    &self,
-    tx: Transaction<Verified>,
-) -> Result<TxId, Self::Error> {
+    async fn submit(
+        &self,
+        tx: Transaction<Verified>,
+    ) -> Result<TxId, Self::Error> {
 
-    let mut store = self.store.lock().unwrap();
-    let mut nonces = self.nonces.lock().unwrap();
+        // -------------------------
+        // LOCK ORDER (IMPORTANT)
+        // -------------------------
+        let mut store = self.store.lock().unwrap();
+        let mut nonces = self.nonces.lock().unwrap();
+        let mut balances = self.balances.lock().unwrap();
 
-    // -------------------------
-    // 1. IDEMPOTENCY FIRST (CRITICAL)
-    // -------------------------
-    if let Some(_status) = store.get(&tx.id) {
-        // Already processed → safe retry
-        return Ok(tx.id);
-    }
+        // -------------------------
+        // 1. IDEMPOTENCY FIRST
+        // -------------------------
+        if let Some(_) = store.get(&tx.id) {
+            return Ok(tx.id);
+        }
 
-    // -------------------------
-    // 2. NONCE VALIDATION (ONLY FOR NEW TX)
-    // -------------------------
-    let sender = tx.from.clone();
-    let incoming_nonce = tx.nonce;
+        // -------------------------
+        // 2. NONCE VALIDATION
+        // -------------------------
+        let sender = tx.from.clone();
+        let incoming_nonce = tx.nonce;
 
-    if let Some(last_nonce) = nonces.get(&sender) {
-        if incoming_nonce <= *last_nonce {
+        if let Some(last_nonce) = nonces.get(&sender) {
+            if incoming_nonce <= *last_nonce {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "nonce replay detected",
+                ));
+            }
+        }
+
+        // -------------------------
+        // 3. BALANCE CHECK
+        // -------------------------
+        let sender_balance = balances
+            .get(&tx.from)
+            .cloned()
+            .unwrap_or_else(|| Amount::new(0).unwrap());
+
+        if sender_balance.value() < tx.amount.value() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                "nonce replay detected",
+                "insufficient funds",
             ));
-     }
-}
+        }
 
-	let mut balances = self.balances.lock().unwrap();
+        // -------------------------
+        // 4. APPLY TRANSFER (ATOMIC)
+        // -------------------------
 
-	let sender_balance = balances
-		.get(&tx.from)
-		.cloned()
-		.unwrap_or_else(|| Amount::new(0).unwrap());
+        // Deduct sender
+        balances.insert(
+            tx.from.clone(),
+            Amount::new(sender_balance.value() - tx.amount.value()).unwrap(),
+        );
 
-	if sender_balance.value() < tx.amount.value() {
-		return Err(std::io::Error::new(
-			std::io::ErrorKind::Other,
-			"insufficient funds",
-	));
-}
+        // Credit receiver
+        let receiver_balance = balances
+            .get(&tx.to)
+            .cloned()
+            .unwrap_or_else(|| Amount::new(0).unwrap());
 
-// Deduct sender
-balances.insert(
-	tx.from.clone(),
-	Amount::new(sender_balance.value() - tx.amount.value()).unwrap(),
+        balances.insert(
+            tx.to.clone(),
+            Amount::new(receiver_balance.value() + tx.amount.value()).unwrap(),
+        );
 
-);
+        // -------------------------
+        // 5. STORE TRANSACTION
+        // -------------------------
+        store.insert(tx.id.clone(), SettlementStatus::Pending);
 
-// Credit receiver
-let receiver_balance = balances
-	.get(&tx.to)
-	.cloned()
-	.unwrap_or_else(|| Amount::new(0).unwrap());
+        // -------------------------
+        // 6. UPDATE NONCE
+        // -------------------------
+        nonces.insert(sender, incoming_nonce);
 
-balances.insert(
-	tx.to.clone(),
-	Amount::new(receiver_balance.value() + tx.amount.value()).unwrap(),
-);
+        Ok(tx.id)
+    }
 
-
-
-    // -------------------------
-    // 3. STORE TRANSACTION
-    // -------------------------
-    store.insert(tx.id.clone(), SettlementStatus::Pending);
-
-    // -------------------------
-    // 4. UPDATE NONCE
-    // -------------------------
-    nonces.insert(sender, incoming_nonce);
-
-    Ok(tx.id)
-}
-
- 
-
-async fn status(
+    async fn status(
         &self,
         tx_id: &TxId,
     ) -> Result<SettlementStatus, Self::Error> {
@@ -130,7 +146,6 @@ async fn status(
 
         match store.get_mut(tx_id) {
             Some(current) => {
-                // Simulate progression
                 *current = match *current {
                     SettlementStatus::Pending => SettlementStatus::Confirmed,
                     SettlementStatus::Confirmed => SettlementStatus::Finalized,
@@ -160,7 +175,6 @@ async fn status(
                 return Ok(status);
             }
 
-            // Simulate delay
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
     }
@@ -169,7 +183,6 @@ async fn status(
         &self,
         _tx: &Transaction<Verified>,
     ) -> Result<Amount, Self::Error> {
-        // Simple flat fee for now
         Ok(Amount::new(1).unwrap())
     }
 }

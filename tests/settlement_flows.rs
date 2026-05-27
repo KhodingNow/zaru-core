@@ -1,17 +1,22 @@
 use tokio::task;
+use std::sync::Arc;
+
 use zaru_core::prelude::*;
 use zaru_core::ledger::in_memory::InMemorySettlement;
-use std::sync::Arc;
+use zaru_core::crypto::ed25519::Keypair;
+use zaru_core::settlement::traits::SettlementLayer;
 
 #[tokio::test]
 async fn test_concurrent_double_spend_attack() {
     let settlement = Arc::new(InMemorySettlement::new());
 
-    let attacker = WalletId::Bank("Attacker".into());
+    let attacker_keys = Keypair::generate();
+    let attacker = WalletId::from(&attacker_keys.verifying);
+
     let victim1 = WalletId::Bank("Victim1".into());
     let victim2 = WalletId::Bank("Victim2".into());
 
-    // ✅ FUND attacker
+    // FUND attacker
     settlement.deposit(attacker.clone(), Amount::new(100).unwrap());
 
     let tx1 = Transaction::<Unsigned>::new(
@@ -30,8 +35,8 @@ async fn test_concurrent_double_spend_attack() {
         2,
     );
 
-    let verified1 = tx1.sign(Signature::new(vec![1])).verify().unwrap();
-    let verified2 = tx2.sign(Signature::new(vec![2])).verify().unwrap();
+    let verified1 = tx1.sign(&attacker_keys).verify().unwrap();
+    let verified2 = tx2.sign(&attacker_keys).verify().unwrap();
 
     let s1 = Arc::clone(&settlement);
     let s2 = Arc::clone(&settlement);
@@ -59,10 +64,10 @@ async fn test_concurrent_double_spend_attack() {
 async fn test_replay_attack_same_nonce_different_txid() {
     let settlement = InMemorySettlement::new();
 
-    let from = WalletId::Bank("Attacker".into());
+    let keypair = Keypair::generate();
+    let from = WalletId::from(&keypair.verifying);
     let to = WalletId::Bank("Victim".into());
 
-    // ✅ FUND attacker
     settlement.deposit(from.clone(), Amount::new(200).unwrap());
 
     let amount = Amount::new(100).unwrap();
@@ -83,11 +88,10 @@ async fn test_replay_attack_same_nonce_different_txid() {
         42,
     );
 
-    let verified1 = tx1.sign(Signature::new(vec![1])).verify().unwrap();
-    let verified2 = tx2.sign(Signature::new(vec![2])).verify().unwrap();
+    let verified1 = tx1.sign(&keypair).verify().unwrap();
+    let verified2 = tx2.sign(&keypair).verify().unwrap();
 
     let _ = settlement.submit(verified1).await.unwrap();
-
     let result = settlement.submit(verified2).await;
 
     assert!(result.is_err(), "Replay attack via nonce was not prevented");
@@ -97,10 +101,10 @@ async fn test_replay_attack_same_nonce_different_txid() {
 async fn test_replay_attack_same_transaction() {
     let settlement = InMemorySettlement::new();
 
-    let from = WalletId::Bank("Attacker".into());
+    let keypair = Keypair::generate();
+    let from = WalletId::from(&keypair.verifying);
     let to = WalletId::Bank("Victim".into());
 
-    // ✅ FUND attacker
     settlement.deposit(from.clone(), Amount::new(100).unwrap());
 
     let tx = Transaction::<Unsigned>::new(
@@ -111,10 +115,7 @@ async fn test_replay_attack_same_transaction() {
         1,
     );
 
-    let verified = tx
-        .sign(Signature::new(vec![9, 9, 9]))
-        .verify()
-        .unwrap();
+    let verified = tx.sign(&keypair).verify().unwrap();
 
     let id1 = settlement.submit(verified.clone()).await.unwrap();
     let id2 = settlement.submit(verified.clone()).await.unwrap();
@@ -132,10 +133,10 @@ async fn test_replay_attack_same_transaction() {
 async fn test_full_settlement_flow() {
     let settlement = InMemorySettlement::new();
 
-    let from = WalletId::Bank("Andile".into());
+    let keypair = Keypair::generate();
+    let from = WalletId::from(&keypair.verifying);
     let to = WalletId::Bank("Linda".into());
 
-    // ✅ FUND sender
     settlement.deposit(from.clone(), Amount::new(100).unwrap());
 
     let tx = Transaction::<Unsigned>::new(
@@ -146,11 +147,9 @@ async fn test_full_settlement_flow() {
         1,
     );
 
-    let signed = tx.sign(Signature::new(vec![1, 2, 3]));
-    let verified = signed.verify().unwrap();
+    let verified = tx.sign(&keypair).verify().unwrap();
 
     let tx_id = settlement.submit(verified).await.unwrap();
-
     let final_status = settlement.await_finality(&tx_id).await.unwrap();
 
     assert_eq!(final_status, SettlementStatus::Finalized);
@@ -160,10 +159,10 @@ async fn test_full_settlement_flow() {
 async fn test_idempotent_submission() {
     let settlement = InMemorySettlement::new();
 
-    let from = WalletId::Bank("Andile".into());
+    let keypair = Keypair::generate();
+    let from = WalletId::from(&keypair.verifying);
     let to = WalletId::Bank("Linda".into());
 
-    // ✅ FUND sender
     settlement.deposit(from.clone(), Amount::new(100).unwrap());
 
     let tx = Transaction::<Unsigned>::new(
@@ -174,10 +173,7 @@ async fn test_idempotent_submission() {
         1,
     );
 
-    let verified = tx
-        .sign(Signature::new(vec![1]))
-        .verify()
-        .unwrap();
+    let verified = tx.sign(&keypair).verify().unwrap();
 
     let id1 = settlement.submit(verified.clone()).await.unwrap();
     let id2 = settlement.submit(verified).await.unwrap();

@@ -1,3 +1,4 @@
+pub mod error;
 pub mod amount;
 pub mod transaction;
 pub mod wallet;

@@ -1,13 +1,13 @@
+use ed25519_dalek::{Signature as DalekSignature, VerifyingKey};
+
 #[derive(Clone, Debug)]
-pub struct Signature(Vec<u8>);
+pub struct Signature {
+    pub sig: DalekSignature,
+    pub public_key: VerifyingKey,
+}
 
 impl Signature {
-	pub fn new(bytes: Vec<u8>) -> Self {
-		Self(bytes)
-	}
-	
-	pub fn as_bytes(&self) -> &[u8] {
-	
-		&self.0
-	}
+    pub fn new(sig: DalekSignature, public_key: VerifyingKey) -> Self {
+        Self { sig, public_key }
+    }
 }

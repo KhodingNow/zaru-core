@@ -1,8 +1,11 @@
 use std::marker::PhantomData;
 
+
 use crate::amount::Amount;
-use crate::wallet::WalletId;
+use crate::crypto::verifier::CryptoVerifier;
+use crate::crypto::ed25519::Keypair;
 use crate::crypto::signature::Signature;
+use crate::wallet::WalletId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TxId(pub String);
@@ -31,6 +34,19 @@ pub struct Transaction<State> {
     _state: PhantomData<State>,
 }
 
+impl<State> Transaction<State> {
+    fn signing_bytes(&self) -> Vec<u8> {
+        format!(
+            "{}:{}:{}:{}:{}",
+            self.id.0,
+            self.from,
+            self.to,
+            self.amount.value(),
+            self.nonce
+        )
+        .into_bytes()
+    }
+}
 
 // ---- UNSIGNED ----
 
@@ -42,8 +58,6 @@ impl Transaction<Unsigned> {
         amount: Amount,
         nonce: u64,
     ) -> Self {
-		assert!(amount.value() > 0, "transaction amount must be positive");	
-
         Self {
             id,
             from,
@@ -55,7 +69,11 @@ impl Transaction<Unsigned> {
         }
     }
 
-    pub fn sign(self, sig: Signature) -> Transaction<Signed> {
+    pub fn sign(self, keypair: &Keypair) -> Transaction<Signed> {
+        let message = self.signing_bytes();
+
+        let sig = keypair.sign(&message);
+
         let Transaction {
             id,
             from,
@@ -71,7 +89,10 @@ impl Transaction<Unsigned> {
             to,
             amount,
             nonce,
-            signature: Some(sig),
+            signature: Some(Signature {
+                sig,
+                public_key: keypair.verifying,
+            }),
             _state: PhantomData,
         }
     }
@@ -81,9 +102,18 @@ impl Transaction<Unsigned> {
 
 impl Transaction<Signed> {
     pub fn verify(self) -> Result<Transaction<Verified>, &'static str> {
-        if self.signature.is_none() {
-            return Err("missing signature");
-        }
+        let signature = self
+            .signature
+            .as_ref()
+            .ok_or("missing signature")?;
+
+        let message = self.signing_bytes();
+
+        CryptoVerifier::verify(
+            &message,
+            signature,
+            &self.from,
+        )?;
 
         let Transaction {
             id,

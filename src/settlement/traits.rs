@@ -1,7 +1,8 @@
 use async_trait::async_trait;
-use crate::transaction::{TxId, Transaction, Verified};
-use crate::settlement::types::SettlementStatus;
+
 use crate::amount::Amount;
+use crate::settlement::types::SettlementStatus;
+use crate::transaction::{Transaction, TxId, Verified};
 
 #[async_trait]
 pub trait SettlementLayer {
@@ -17,7 +18,6 @@ pub trait SettlementLayer {
         tx_id: &TxId,
     ) -> Result<SettlementStatus, Self::Error>;
 
-   
     async fn await_finality(
         &self,
         tx_id: &TxId,
