@@ -1,13 +1,38 @@
-/target/
-**/*.rs.bk
-Cargo.lock
+# Rust build artifacts
+target/
+*.pdb
 
-# macOS / Linux junk
-.DS_Store
+# Python virtual environment
+venv/
+env/
+.env/
+*.pyc
+__pycache__/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 
-# IDEs
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Maturin build artifacts
+*.whl
+*.so
+*.dylib
+*.dll
+
+# Coverage reports
+*.coverage
+coverage/
+htmlcov/
 
 # Logs
-*.log/target
+*.log
