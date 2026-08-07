@@ -1,12 +1,43 @@
-
 [package]
 name = "zaru-core"
 version = "0.1.0"
 edition = "2024"
+authors = ["Your Name <khodingtata@gmail.com>"]
+description = "A secure payment model engine with transaction state machine and cryptographic verification"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/KhodingNow/zaru-core"
+homepage = "https://github.com/KhodingNow/zaru-core"
+documentation = "https://docs.rs/zaru-core"
+readme = "README.md"
+keywords = ["payment", "cryptography", "transaction", "ed25519", "wallet"]
+categories = ["cryptography", "data-structures", "financial"]
+
+[lib]
+name = "zaru_core"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# Core dependencies
 async-trait = "0.1.89"
-tokio = { version = "1.52.1", features = ["full"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand = "0.8"
 hex = "0.4"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.52.1", features = ["full"] }
+
+pyo3 = { version = "0.20.0", features = ["extension-module"], optional = true }
+
+[dev-dependencies]
+criterion = "0.5"
+tokio-test = "0.4"
+
+[features]
+default = ["python-bindings"]  # <-- ADD THIS: makes python-bindings default
+python-bindings = ["dep:pyo3"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

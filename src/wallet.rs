@@ -1,7 +1,8 @@
-use std::fmt;
+use core::fmt;
 
 use ed25519_dalek::VerifyingKey;
 
+/// A bank account identifier.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BankAccount(pub String);
 
@@ -11,14 +12,38 @@ impl From<&str> for BankAccount {
 	}
 }
 
+/// A wallet that can be either a bank account or a cryptocurrency address.
+/// 
+/// # Examples
+/// ```
+/// use zaru_core::WalletId;
+/// 
+/// // Create a bank wallet
+/// let bank = WalletId::from("Bank of America");
+/// 
+/// // Create a crypto wallet
+/// let crypto = WalletId::from_crypto("0x1234567890abcdef");
+/// ```
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum WalletId {
+
+    /// A trsditional bank account
     Bank(BankAccount),
+    
+    /// A cryptocurrency address
     Crypto(String),
 }
 
 impl WalletId {
-	pub fn from_ed25519(pk: &VerifyingKey) -> Self {
+
+    /// Creates a wallet from an ED25519 public key.
+    /// 
+    /// # Arguments
+    /// * `pk` - The verifying (public) key
+    /// 
+    /// # Returns
+    /// A crypto wallet with the hex-encoded public key as its address.
+    pub fn from_ed25519(pk: &VerifyingKey) -> Self {
 		WalletId::Crypto(hex::encode(pk.as_bytes()))
 	}
 }
