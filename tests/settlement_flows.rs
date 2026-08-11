@@ -1,10 +1,12 @@
-use tokio::task;
 use std::sync::Arc;
+use tokio::task;
 
-use zaru_core::prelude::*;
-use zaru_core::ledger::in_memory::InMemorySettlement;
 use zaru_core::crypto::ed25519::Keypair;
+use zaru_core::settlement::types::SettlementStatus;
 use zaru_core::settlement::traits::SettlementLayer;
+use zaru_core::ledger::in_memory::InMemorySettlement;
+use zaru_core::prelude::*;
+
 
 #[tokio::test]
 async fn test_concurrent_double_spend_attack() {
@@ -41,21 +43,14 @@ async fn test_concurrent_double_spend_attack() {
     let s1 = Arc::clone(&settlement);
     let s2 = Arc::clone(&settlement);
 
-    let handle1 = task::spawn(async move {
-        s1.submit(verified1).await
-    });
+    let handle1 = task::spawn(async move { s1.submit(verified1).await });
 
-    let handle2 = task::spawn(async move {
-        s2.submit(verified2).await
-    });
+    let handle2 = task::spawn(async move { s2.submit(verified2).await });
 
     let r1 = handle1.await.unwrap();
     let r2 = handle2.await.unwrap();
 
-    let success_count = [r1.is_ok(), r2.is_ok()]
-        .iter()
-        .filter(|&&x| x)
-        .count();
+    let success_count = [r1.is_ok(), r2.is_ok()].iter().filter(|&&x| x).count();
 
     assert_eq!(success_count, 1, "Double spend occurred");
 }
@@ -80,13 +75,7 @@ async fn test_replay_attack_same_nonce_different_txid() {
         42,
     );
 
-    let tx2 = Transaction::<Unsigned>::new(
-        TxId("tx-2".into()),
-        from,
-        to,
-        amount,
-        42,
-    );
+    let tx2 = Transaction::<Unsigned>::new(TxId("tx-2".into()), from, to, amount, 42);
 
     let verified1 = tx1.sign(&keypair).verify().unwrap();
     let verified2 = tx2.sign(&keypair).verify().unwrap();
@@ -139,13 +128,8 @@ async fn test_full_settlement_flow() {
 
     settlement.deposit(from.clone(), Amount::new(100).unwrap());
 
-    let tx = Transaction::<Unsigned>::new(
-        TxId("tx-1".into()),
-        from,
-        to,
-        Amount::new(100).unwrap(),
-        1,
-    );
+    let tx =
+        Transaction::<Unsigned>::new(TxId("tx-1".into()), from, to, Amount::new(100).unwrap(), 1);
 
     let verified = tx.sign(&keypair).verify().unwrap();
 

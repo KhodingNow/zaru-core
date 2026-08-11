@@ -3,6 +3,7 @@ use ed25519_dalek::Verifier;
 use crate::crypto::signature::Signature;
 use crate::wallet::WalletId;
 
+#[derive(Debug)]
 pub struct CryptoVerifier;
 
 impl CryptoVerifier {
@@ -11,7 +12,6 @@ impl CryptoVerifier {
         signature: &Signature,
         expected_wallet: &WalletId,
     ) -> Result<(), &'static str> {
-
         // 1. cryptographic verification
         signature
             .public_key
@@ -19,8 +19,7 @@ impl CryptoVerifier {
             .map_err(|_| "invalid signature")?;
 
         // 2. wallet ownership enforcement
-        let derived_wallet =
-            WalletId::from_ed25519(&signature.public_key);
+        let derived_wallet = WalletId::from_ed25519(&signature.public_key);
 
         if &derived_wallet != expected_wallet {
             return Err("wallet does not match signing key");

@@ -2,9 +2,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs, missing_debug_implementations, rust_2018_idioms)]
 
-
 //! # Zaru Core
-//! 
+//!
 //! A secure payment model engine with transaction state machine and cryptographic verification.
 //!
 
@@ -14,15 +13,15 @@
 //! - ED25519 cryptographic verification
 //! - Wallet abstraction (Bank + Crypto)
 //! - Optional Python bindings
-//! 
+//!
 //! ## Quick Start
 //! ```rust
 //! use zaru_core::{Amount, Transaction, TxId, WalletId, Keypair};
-//! 
+//!
 //! let from = WalletId::from("sender");
 //! let to = WalletId::from_crypto("receiver");
 //! let amount = Amount::new(1000).unwrap();
-//! 
+//!
 //! let tx = Transaction::<Unsigned>::new(
 //!     TxId("txn_001".to_string()),
 //!     from,
@@ -30,7 +29,7 @@
 //!     amount,
 //!     1
 //! );
-//! 
+//!
 //! let keypair = Keypair::generate();
 //! let signed = tx.sign(&keypair);
 //! let verified = signed.verify().unwrap();
@@ -63,15 +62,36 @@ pub mod ledger;
 
 /// Cryptographic primitives including ED25519 signatures.
 pub mod crypto;
+/// Convenience module for common imports.
+///
+/// Use use zaru_core::prelude::*; to import all commonly used types.
+
+// Prelude for convenient imports
+pub mod prelude {
+	pub use crate::{
+		Amount,
+		Transaction,
+		TxId,
+		WalletId,
+		Unsigned,
+		Signed,
+		Verified,
+		Keypair,
+		Signature,
+		CryptoVerifier,
+		ZaruError,
+		Result,
+	};
+}
 
 // Re-exports
 pub use crate::amount::Amount;
-pub use crate::transaction::{Transaction, TxId, Unsigned, Signed, Verified};
-pub use crate::wallet::WalletId;
-pub use crate::crypto::signature::Signature;
 pub use crate::crypto::ed25519::Keypair;
+pub use crate::crypto::signature::Signature;
 pub use crate::crypto::verifier::CryptoVerifier;
-pub use crate::error::{ZaruError, Result};
+pub use crate::error::{Result, ZaruError};
+pub use crate::transaction::{Signed, Transaction, TxId, Unsigned, Verified};
+pub use crate::wallet::WalletId;
 
 // Python bindings (conditional)
 #[cfg(feature = "python-bindings")]

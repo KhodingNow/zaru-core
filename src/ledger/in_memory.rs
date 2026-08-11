@@ -9,10 +9,17 @@ use crate::settlement::types::{FailureReason, SettlementStatus};
 use crate::transaction::{Transaction, TxId, Verified};
 use crate::wallet::WalletId;
 
+#[derive(Debug)]
 pub struct InMemorySettlement {
     store: Mutex<HashMap<TxId, SettlementStatus>>,
     nonces: Mutex<HashMap<WalletId, u64>>,
     balances: Mutex<HashMap<WalletId, Amount>>,
+}
+
+impl Default for InMemorySettlement {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---- Constructor ----
@@ -31,9 +38,7 @@ impl InMemorySettlement {
     pub fn deposit(&self, wallet: WalletId, amount: Amount) {
         let mut balances = self.balances.lock().unwrap();
 
-        let entry = balances
-            .entry(wallet)
-            .or_insert(Amount::new(0).unwrap());
+        let entry = balances.entry(wallet).or_insert(Amount::new(0).unwrap());
 
         *entry = Amount::new(entry.value() + amount.value()).unwrap();
     }
@@ -55,11 +60,7 @@ impl InMemorySettlement {
 impl SettlementLayer for InMemorySettlement {
     type Error = std::io::Error;
 
-    async fn submit(
-        &self,
-        tx: Transaction<Verified>,
-    ) -> Result<TxId, Self::Error> {
-
+    async fn submit(&self, tx: Transaction<Verified>) -> Result<TxId, Self::Error> {
         // -------------------------
         // LOCK ORDER (IMPORTANT)
         // -------------------------
@@ -70,7 +71,7 @@ impl SettlementLayer for InMemorySettlement {
         // -------------------------
         // 1. IDEMPOTENCY FIRST
         // -------------------------
-        if let Some(_) = store.get(&tx.id) {
+        if store.get(&tx.id).is_some() {
             return Ok(tx.id);
         }
 
@@ -80,13 +81,10 @@ impl SettlementLayer for InMemorySettlement {
         let sender = tx.from.clone();
         let incoming_nonce = tx.nonce;
 
-        if let Some(last_nonce) = nonces.get(&sender) {
-            if incoming_nonce <= *last_nonce {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "nonce replay detected",
-                ));
-            }
+        if let Some(last_nonce) = nonces.get(&sender)
+            && incoming_nonce <= *last_nonce
+        {
+            return Err(std::io::Error::other("nonce replay detected"));
         }
 
         // -------------------------
@@ -98,10 +96,7 @@ impl SettlementLayer for InMemorySettlement {
             .unwrap_or_else(|| Amount::new(0).unwrap());
 
         if sender_balance.value() < tx.amount.value() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "insufficient funds",
-            ));
+            return Err(std::io::Error::other("insufficient funds"));
         }
 
         // -------------------------
@@ -138,10 +133,7 @@ impl SettlementLayer for InMemorySettlement {
         Ok(tx.id)
     }
 
-    async fn status(
-        &self,
-        tx_id: &TxId,
-    ) -> Result<SettlementStatus, Self::Error> {
+    async fn status(&self, tx_id: &TxId) -> Result<SettlementStatus, Self::Error> {
         let mut store = self.store.lock().unwrap();
 
         match store.get_mut(tx_id) {
@@ -161,10 +153,7 @@ impl SettlementLayer for InMemorySettlement {
         }
     }
 
-    async fn await_finality(
-        &self,
-        tx_id: &TxId,
-    ) -> Result<SettlementStatus, Self::Error> {
+    async fn await_finality(&self, tx_id: &TxId) -> Result<SettlementStatus, Self::Error> {
         loop {
             let status = self.status(tx_id).await?;
 
@@ -179,10 +168,7 @@ impl SettlementLayer for InMemorySettlement {
         }
     }
 
-    async fn estimate_fee(
-        &self,
-        _tx: &Transaction<Verified>,
-    ) -> Result<Amount, Self::Error> {
+    async fn estimate_fee(&self, _tx: &Transaction<Verified>) -> Result<Amount, Self::Error> {
         Ok(Amount::new(1).unwrap())
     }
 }

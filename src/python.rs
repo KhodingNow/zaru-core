@@ -1,6 +1,11 @@
 // src/python.rs
+
+#![allow(unsafe_op_in_unsafe_fn)]
+#![allow(non_local_definitions)]
+#![allow(clippy::inherent_to_string)]
+
 //! Python bindings for zaru-core payment engine
-//! 
+//!
 //! This module provides Python bindings using PyO3 for the zaru-core payment engine.
 //! It exposes the following Python classes:
 //! - `Amount`: Safe monetary value handling
@@ -8,21 +13,18 @@
 //! - `Transaction`: Payment transaction with verification
 //! - `PaymentEngine`: Main engine for creating and managing transactions
 
-#![allow(non_local_definitions)] // Suppress PyO3 macro warnings
 
+
+use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::exceptions::{PyValueError, PyRuntimeError};
 use serde_json::json;
 
-use crate::{
-    Amount, Transaction, TxId, WalletId, Unsigned, Verified,
-    Keypair, CryptoVerifier,
-};
+use crate::{Amount, CryptoVerifier, Keypair, Transaction, TxId, Unsigned, Verified, WalletId};
 
 /// Python wrapper for Amount
-/// 
+///
 /// Represents a monetary amount with safe construction (prevents negative values).
-/// 
+///
 /// Examples:
 ///     >>> from zaru_core import PaymentEngine
 ///     >>> engine = PaymentEngine()
@@ -30,15 +32,21 @@ use crate::{
 ///     >>> amount.value
 ///     1000
 #[pyclass(name = "Amount")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PyAmount {
     inner: Amount,
+}
+
+impl Default for PyPaymentEngine {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[pymethods]
 impl PyAmount {
     /// Create a new Amount from an integer value
-    /// 
+    ///
     /// Raises ValueError if the amount is negative
     #[new]
     pub fn new(value: i128) -> PyResult<Self> {
@@ -79,16 +87,16 @@ impl PyAmount {
 }
 
 /// Python wrapper for WalletId
-/// 
+///
 /// Represents a wallet that can be either a bank account or a cryptocurrency address.
-/// 
+///
 /// Examples:
 ///     >>> from zaru_core import PaymentEngine
 ///     >>> engine = PaymentEngine()
 ///     >>> bank_wallet = engine.create_wallet("bank", "Bank of America")
 ///     >>> crypto_wallet = engine.create_wallet("crypto", "0x1234567890abcdef")
 #[pyclass(name = "WalletId")]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PyWalletId {
     inner: WalletId,
 }
@@ -138,9 +146,9 @@ impl PyWalletId {
 }
 
 /// Python wrapper for Transaction
-/// 
+///
 /// Represents a payment transaction that has been signed and verified.
-/// 
+///
 /// Examples:
 ///     >>> from zaru_core import PaymentEngine
 ///     >>> engine = PaymentEngine()
@@ -154,6 +162,7 @@ impl PyWalletId {
 ///     >>> tx.verify_signature()
 ///     True
 #[pyclass(name = "Transaction")]
+#[derive(Debug)]
 pub struct PyTransaction {
     inner: Transaction<Verified>,
 }
@@ -161,7 +170,7 @@ pub struct PyTransaction {
 #[pymethods]
 impl PyTransaction {
     /// Create a new unsigned transaction (internal use)
-    /// 
+    ///
     /// This is used by PaymentEngine to create transactions.
     /// Users should use PaymentEngine.create_transaction() instead.
     #[staticmethod]
@@ -245,8 +254,7 @@ impl PyTransaction {
             "state": "Verified",
         });
 
-        serde_json::to_string(&data)
-            .map_err(|e| PyRuntimeError::new_err(e.to_string()))
+        serde_json::to_string(&data).map_err(|e| PyRuntimeError::new_err(e.to_string()))
     }
 
     /// Verify the transaction signature
@@ -259,7 +267,8 @@ impl PyTransaction {
                 self.inner.to,
                 self.inner.amount.value(),
                 self.inner.nonce
-            ).into_bytes();
+            )
+            .into_bytes();
 
             match CryptoVerifier::verify(&message, sig, &self.inner.from) {
                 Ok(_) => Ok(true),
@@ -272,9 +281,9 @@ impl PyTransaction {
 }
 
 /// Main payment engine
-/// 
+///
 /// The primary interface for creating and managing payment transactions.
-/// 
+///
 /// Examples:
 ///     >>> from zaru_core import PaymentEngine
 ///     >>> engine = PaymentEngine()
@@ -288,6 +297,7 @@ impl PyTransaction {
 ///     ...     nonce=1
 ///     ... )
 #[pyclass(name = "PaymentEngine")]
+#[derive(Debug)]
 pub struct PyPaymentEngine {
     // Engine state can be added here later
     // e.g., transaction_history: Vec<Transaction<Verified>>,
@@ -302,14 +312,14 @@ impl PyPaymentEngine {
     }
 
     /// Create a new transaction
-    /// 
+    ///
     /// Args:
     ///     id: Unique transaction identifier
     ///     from_wallet: Sender wallet
     ///     to_wallet: Receiver wallet
     ///     amount: Transaction amount
     ///     nonce: Unique nonce for the transaction
-    /// 
+    ///
     /// Returns:
     ///     A signed and verified Transaction object
     #[pyo3(signature = (id, from_wallet, to_wallet, amount, nonce))]
@@ -325,14 +335,14 @@ impl PyPaymentEngine {
     }
 
     /// Create a new wallet
-    /// 
+    ///
     /// Args:
     ///     wallet_type: Either "bank" or "crypto"
     ///     identifier: Bank account or crypto address
-    /// 
+    ///
     /// Returns:
     ///     A WalletId object
-    /// 
+    ///
     /// Raises:
     ///     ValueError: If wallet_type is not "bank" or "crypto"
     pub fn create_wallet(&self, wallet_type: &str, identifier: &str) -> PyResult<PyWalletId> {
@@ -340,19 +350,19 @@ impl PyPaymentEngine {
             "bank" => Ok(PyWalletId::from_bank(identifier)),
             "crypto" => Ok(PyWalletId::from_crypto(identifier)),
             _ => Err(PyValueError::new_err(
-                "Wallet type must be 'bank' or 'crypto'"
+                "Wallet type must be 'bank' or 'crypto'",
             )),
         }
     }
 
     /// Create a new Amount
-    /// 
+    ///
     /// Args:
     ///     value: The amount value (must be >= 0)
-    /// 
+    ///
     /// Returns:
     ///     An Amount object
-    /// 
+    ///
     /// Raises:
     ///     ValueError: If value is negative
     pub fn create_amount(&self, value: i128) -> PyResult<PyAmount> {
@@ -360,10 +370,10 @@ impl PyPaymentEngine {
     }
 
     /// Verify a transaction's signature
-    /// 
+    ///
     /// Args:
     ///     tx: The transaction to verify
-    /// 
+    ///
     /// Returns:
     ///     True if the signature is valid, False otherwise
     pub fn verify_transaction(&self, tx: &PyTransaction) -> PyResult<bool> {
@@ -372,10 +382,10 @@ impl PyPaymentEngine {
 }
 
 /// Export the Python module
-/// 
+///
 /// This function defines what gets exported to Python.
 #[pymodule]
-pub fn zaru_core(_py: Python, m: &PyModule) -> PyResult<()> {
+pub fn zaru_core(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     // Register classes
     m.add_class::<PyAmount>()?;
     m.add_class::<PyWalletId>()?;
