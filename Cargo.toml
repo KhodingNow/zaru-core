@@ -10,7 +10,7 @@ homepage = "https://github.com/KhodingNow/zaru-core"
 documentation = "https://docs.rs/zaru-core"
 readme = "README.md"
 keywords = ["payment", "cryptography", "transaction", "ed25519", "wallet"]
-categories = ["cryptography", "data-structures", "financial"]
+categories = ["cryptography", "data-structures", "finance"]
 
 [lib]
 name = "zaru_core"
