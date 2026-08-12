@@ -1,0 +1,43 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:  # Allows manual triggering for testing
+
+jobs:
+  build-and-publish:
+    name: Build and publish Python distribution 📦 to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/zaru-core
+    permissions:
+      id-token: write  # Required for trusted publishing
+      contents: read
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        architecture: x64
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install maturin
+
+    - name: Build wheels and source distribution
+      run: |
+        maturin build --release --sdist --out dist
+        # List the built files
+        ls -la dist/
+
+    - name: Upload to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        packages-dir: dist/

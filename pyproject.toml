@@ -1,0 +1,35 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "zaru-core"
+version = "0.1.0"
+description = "A secure payment model engine with transaction state machine and cryptographic verification"
+authors = [
+    {name = "Thembaletu Mbangcolo", email = "khodingtata@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT OR Apache-2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Office/Business :: Financial",
+]
+keywords = ["payment", "cryptography", "transaction", "ed25519", "wallet"]
+
+[project.urls]
+Homepage = "https://github.com/KhodingNow/zaru-core"
+Repository = "https://github.com/KhodingNow/zaru-core"
+Documentation = "https://docs.rs/zaru-core"
+
+[tool.maturin]
+features = ["python-bindings"]
